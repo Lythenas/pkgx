@@ -78,7 +78,7 @@ export default function(opts: { fish: boolean }) {
         if type -q _pkgx_reset
           _pkgx_reset
         end
-        eval (command pkgx --internal.use --fish $argv)
+        command pkgx --internal.use --fish $argv | source
       end
 
       function dev
@@ -91,7 +91,7 @@ export default function(opts: { fish: boolean }) {
           if type -q _pkgx_reset
             _pkgx_reset
           end
-          eval (command pkgx --internal.activate --fish $PWD $argv)
+          command pkgx --internal.activate --fish $PWD $argv | eval
         end
       end
 
@@ -133,7 +133,7 @@ export default function(opts: { fish: boolean }) {
               if type -q _pkgx_reset
                 _pkgx_reset
               end
-              eval (command pkgx --internal.activate --fish $dir)
+              command pkgx --internal.activate --fish $dir | source
               break
             end
             set dir (dirname $dir)
