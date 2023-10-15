@@ -1,12 +1,13 @@
-import { PackageRequirement, Path, PkgxError, hooks, utils } from "pkgx"
 import escape_if_necessary from "../utils/sh-escape.ts"
+import { PackageRequirement, Path, PkgxError, hooks, utils } from "pkgx"
+import { unset_vars, export_var, shell_function_start, shell_function_end } from "../utils/shell-helper.ts"
 import construct_env  from "../prefab/construct-env.ts"
 import install, { Logger } from "../prefab/install.ts"
 import { blurple } from "../utils/color.ts"
 import devenv from "../utils/devenv.ts"
 import undent from "outdent"
 
-export default async function(dir: Path, { powder, ...opts }: { powder: PackageRequirement[], logger: Logger }) {
+export default async function(dir: Path, { powder, ...opts }: { powder: PackageRequirement[], logger: Logger, fish: boolean }) {
   const { install, construct_env, datadir, getenv } = _internals
 
   if (!dir.isDirectory()) {
@@ -52,7 +53,8 @@ export default async function(dir: Path, { powder, ...opts }: { powder: PackageR
 
     //NOTE strictly env which we model ourselves on does not do value escaping which results in output
     // that cannot be sourced if the value contains spaces
-    rv += `export ${key}=${escape_if_necessary(value)}\n`
+    rv += export_var(opts.fish, key, value, true)
+    rv += '\n'
   }
 
   // if (/\(pkgx\)/.test(getenv("PS1") ?? '') == false) {
@@ -61,17 +63,20 @@ export default async function(dir: Path, { powder, ...opts }: { powder: PackageR
   //   rv += `export PS1="(pkgx) $PS1"\n`
   // }
 
-  rv += `export PKGX_POWDER="${installations.pkgenv.map(utils.pkg.str).join(' ')}"\n`
-  rv += `export PKGX_PKGENV="${installations.installations.map(({pkg}) => utils.pkg.str(pkg)).join(' ')}"\n\n`
+  rv += export_var(opts.fish, "PKGX_POWDER", installations.pkgenv.map(utils.pkg.str).join(' '), true)
+  rv += "\n"
+  rv += export_var(opts.fish, "PKGX_PKGENV", installations.installations.map(({pkg}) => utils.pkg.str(pkg)).join(' '), true)
+  rv += "\n\n"
 
-  rv += "_pkgx_reset() {\n"
+  rv += shell_function_start(opts.fish, "_pkgx_reset")
+  rv += "\n"
   for (const key in env) {
     const old = getenv(key)
     if (old !== undefined) {
       //TODO don’t export if not currently exported!
-      rv += `  export ${key}=${escape_if_necessary(old)}\n`
+      rv += `  ${export_var(opts.fish, key, old, true)}\n`
     } else {
-      rv += `  unset ${key}\n`
+      rv += `  ${unset_vars(opts.fish, [key])}\n`
     }
   }
 
@@ -79,41 +84,62 @@ export default async function(dir: Path, { powder, ...opts }: { powder: PackageR
   // rv += ps1 ? `  export PS1="${ps1}"\n` : "  unset PS1\n"
   // rv += "  unset -f _pkgx_reset\n"
 
-  rv += "}\n"
-  rv += "\n"
+  rv += shell_function_end(opts.fish)
+  rv += "\n\n"
 
   const raw_off_string = rv_pkgenv.map(x => `-${utils.pkg.str(x)}`).join(' ')
   const off_string = rv_pkgenv.map(x => `-${escape_if_necessary(utils.pkg.str(x))}`).join(' ')
 
-  rv += undent`
-    _pkgx_should_deactivate_devenv() {
-      suffix="\${PWD#"${dir}"}"
-      test "$PWD" != "${dir}$suffix"
-    }
+  if (opts.fish) {
+    rv += undent`
+      function _pkgx_should_deactivate_devenv
+        set -l suffix (string replace --regex -- ^(string escape --style=regex -- "${dir}") "" $PWD)
+        test "$PWD" != "${dir}$suffix"
+      end
 
-    _pkgx_dev_off() {
-      echo '${blurple('env')} ${raw_off_string}' >&2
+      function _pkgx_dev_off
+        echo '${blurple('env')} ${raw_off_string}' >&2
 
-      env ${off_string}
+        env ${off_string}
 
-      if [ "$1" != --shy ]; then
-        rm "${persistence}"
-      fi
+        if text $argv[1] != --shy
+          rm "${persistence}"
+        end
 
-      unset -f _pkgx_dev_off _pkgx_should_deactivate_devenv
+        functions -e _pkgx_dev_off _pkgx_should_deactivate_devenv
 
     `
+  } else {
+    rv += undent`
+      _pkgx_should_deactivate_devenv() {
+        suffix="\${PWD#"${dir}"}"
+        test "$PWD" != "${dir}$suffix"
+      }
+
+      _pkgx_dev_off() {
+        echo '${blurple('env')} ${raw_off_string}' >&2
+
+        env ${off_string}
+
+        if [ "$1" != --shy ]; then
+          rm "${persistence}"
+        fi
+
+        unset -f _pkgx_dev_off _pkgx_should_deactivate_devenv
+
+    `
+  }
 
   for (const key in userenv) {
     const value = getenv(key)
     if (value) {
-      rv += `  export ${key}=${escape_if_necessary(value)}\n`
+      rv += `  ${export_var(opts.fish, key, value, true)}\n`
     } else {
-      rv += `  unset ${key}\n`
+      rv += `  ${unset_vars(opts.fish, [key])}\n`
     }
   }
 
-  rv += "}"
+  rv += shell_function_end(opts.fish)
 
   return [rv, rv_pkgenv] as [string, PackageRequirement[]]
 }

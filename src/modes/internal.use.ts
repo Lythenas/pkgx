@@ -1,4 +1,4 @@
-import escape_if_necessary from "../utils/sh-escape.ts"
+import { unset_vars, export_var, shell_function_start, shell_function_end } from "../utils/shell-helper.ts"
 import construct_env from "../prefab/construct-env.ts"
 import install, { Logger } from "../prefab/install.ts"
 import { PackageRequirement, utils } from "pkgx"
@@ -9,14 +9,15 @@ interface Pkgs {
   active: PackageRequirement[]
 }
 
-export default async function(opts: { pkgs: Pkgs, logger: Logger, pkgenv?: Record<string, string>, update: boolean | Set<string> }) {
+
+export default async function(opts: { pkgs: Pkgs, logger: Logger, pkgenv?: Record<string, string>, update: boolean | Set<string>, fish: boolean }) {
   const { install, construct_env, getenv } = _internals
 
   const pkgs = consolidate(opts.pkgs)
 
   if (pkgs.length == 0) {
     return {
-      shellcode: 'unset PKGX_POWDER PKGX_PKGENV',
+      shellcode: unset_vars(opts.fish, ['PKGX_POWDER', 'PKGX_PKGENV']),
       pkgenv: []
     }
   } else {
@@ -27,11 +28,11 @@ export default async function(opts: { pkgs: Pkgs, logger: Logger, pkgenv?: Recor
     const env = await construct_env(pkgenv)
 
     for (const [key, value] of Object.entries(env)) {
-      print(`export ${key}=${escape_if_necessary(value)}`)
+      print(export_var(opts.fish, key, value, true))
     }
 
-    print(`export PKGX_POWDER="${pkgenv.pkgenv.map(utils.pkg.str).join(' ')}"`)
-    print(`export PKGX_PKGENV="${pkgenv.installations.map(({pkg}) => utils.pkg.str(pkg)).join(' ')}"`)
+    print(export_var(opts.fish, "PKGX_POWDER", pkgenv.pkgenv.map(utils.pkg.str).join(' ')))
+    print(export_var(opts.fish, "PKGX_PKGENV", pkgenv.installations.map(({pkg}) => utils.pkg.str(pkg)).join(' ')))
 
     // if (/\(pkgx\)/.test(getenv("PS1") ?? '') == false) {
     //   //FIXME doesn't work with warp.dev for fuck knows why reasons
@@ -41,14 +42,14 @@ export default async function(opts: { pkgs: Pkgs, logger: Logger, pkgenv?: Recor
 
     print('')
 
-    print('_pkgx_reset() {')
+    print(shell_function_start(opts.fish, "_pkgx_reset"))
     for (const key in env) {
       const old = getenv(key)
       if (old !== undefined) {
         //TODO don’t export if not currently exported!
-        print(`  export ${key}=${escape_if_necessary(old)}`)
+        print(export_var(opts.fish, key, old, true))
       } else {
-        print(`  unset ${key}`)
+        print(unset_vars(opts.fish, [key]))
       }
     }
 
@@ -56,7 +57,7 @@ export default async function(opts: { pkgs: Pkgs, logger: Logger, pkgenv?: Recor
     // print(ps1 ? `  export PS1="${ps1}"` : '  unset PS1')
     // print('  unset -f _pkgx_reset _pkgx_install')
 
-    print('}')
+    print(shell_function_end(opts.fish))
 
     const install_set = (({pkgenv, installations}) => {
       const set = new Set(pkgenv.map(({project}) => project))
@@ -64,10 +65,11 @@ export default async function(opts: { pkgs: Pkgs, logger: Logger, pkgenv?: Recor
     })(pkgenv)
 
     print('')
-    print('_pkgx_install() {')
+
+    print(shell_function_start(opts.fish, 'pkgx_install'))
     print(`  command pkgx install ${install_set.map(utils.pkg.str).join(' ')}`)
     print(`  pkgx ${pkgenv.pkgenv.map(x => `-${utils.pkg.str(x)}`).join(' ')}`)
-    print('}')
+    print(shell_function_end(opts.fish))
 
     return {shellcode: rv, pkgenv: install_set}
   }

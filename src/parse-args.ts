@@ -17,6 +17,7 @@ export type Args = {
   } | {
     mode: 'internal.use'
     pkgs: Pkgs
+    fish: boolean
   } | {
     mode: 'env'
     pkgs: {
@@ -24,16 +25,21 @@ export type Args = {
       minus: string[]
     }
   } | {
-    mode: 'shellcode' | 'version' | 'help'
+    mode: 'shellcode'
+    fish: boolean
+  } | {
+    mode: 'version' | 'help'
   } | {
     mode: 'integrate' | 'deintegrate'
     dryrun: boolean
   } | {
     mode: 'provider' | 'shell-completion'
     args: string[]
+    fish: boolean
   } | {
     mode: 'internal.activate'
     dir: Path
+    fish: boolean
   } | {
     mode: 'install'
     args: string[]
@@ -56,6 +62,7 @@ export default function(input: string[]): Args {
   }
   let mode: string | undefined
   let dryrun: boolean | undefined
+  let fish: boolean | undefined
 
   switch (input[0]) {
   case 'deintegrate':
@@ -109,6 +116,9 @@ export default function(input: string[]): Args {
       case 'dry-run':
         dryrun = true
         break
+      case 'fish':
+          fish = true
+          break
       case '':
         // empty the main loop iterator
         for (const arg of it) args.push(arg)
@@ -133,6 +143,10 @@ export default function(input: string[]): Args {
     throw new UsageError({msg: '--dry-run cannot be specified with this mode'})
   }
 
+  if (fish !== undefined && !(mode == 'internal.use' || mode == 'internal.activate' || mode == 'shellcode' || mode == 'provider' || mode == 'shell-completion')) {
+    throw new UsageError({msg: '--fish cannot be specified with this mode'})
+  }
+
   switch (mode) {
   case undefined:
     if (args.length) {
@@ -141,20 +155,26 @@ export default function(input: string[]): Args {
       return { mode: 'env', flags, pkgs }
     }
   case 'internal.use':
-    return { mode, flags, pkgs }
+    fish ??= false
+    return { mode, flags, pkgs, fish }
   case 'run':
     return { mode, flags, pkgs, args }
   case 'provider':
   case 'shell-completion':
-    return { mode, flags, args }
+    fish ??= false
+    return { mode, flags, args, fish }
   case 'internal.activate':
-    return { mode, flags, dir: new Path(args[0]) }
+    fish ??= false
+    return { mode, flags, dir: new Path(args[0]), fish }
   case 'install':
     return { mode, flags, args }
   case 'integrate':
   case 'deintegrate':
     dryrun ??= false
     return { mode, dryrun, flags }
+  case 'shellcode':
+    fish ??= false
+    return { mode, flags, fish }
   default:
     // deno-lint-ignore no-explicit-any
     return { mode: mode as any, flags }

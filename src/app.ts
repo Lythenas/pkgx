@@ -50,7 +50,7 @@ export default async function({ flags, ...opts }: Args, logger_prefix?: string) 
   case 'internal.use': {
     await ensure_pantry()
     const xopts = await parse_xopts(opts.pkgs, flags.update)
-    const rv = await internal_use({ ...xopts, logger })
+    const rv = await internal_use({ ...xopts, logger, fish: opts.fish })
     if (rv) {
       console.log(rv.shellcode)
     }
@@ -58,7 +58,7 @@ export default async function({ flags, ...opts }: Args, logger_prefix?: string) 
   case 'internal.activate': {
     await ensure_pantry()
     const powder = flatmap(Deno.env.get("PKGX_POWDER"), x => x.split(/\s+/).map(utils.pkg.parse)) ?? []
-    const [shellcode, pkgs] = await internal_activate(opts.dir, { powder, logger })
+    const [shellcode, pkgs] = await internal_activate(opts.dir, { powder, logger, fish: opts.fish })
     console.error(`%s %s`, blurple('env'), pkgs.map(x => `+${utils.pkg.str(x)}`).join(' '))
     console.log(shellcode)
     if (Deno.env.get("TERM_PROGRAM") == "vscode") {
@@ -73,7 +73,7 @@ export default async function({ flags, ...opts }: Args, logger_prefix?: string) 
     await integrate('uninstall', opts)
     break
   case 'shellcode':
-    console.log(shellcode())
+    console.log(shellcode({ fish: opts.fish }))
     break
   case 'help':
     setColorEnabled(clicolor(Deno.stdout.rid))

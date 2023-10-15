@@ -82,7 +82,7 @@ export default async function(op: 'install' | 'uninstall', { dryrun }: { dryrun:
   case 'install':
     if (!_internals.isatty(Deno.stdout.rid)) {
       // we're being sourced, output the hook
-      _internals.stdout(shellcode())
+      _internals.stdout(shellcode({ fish: false }))
     } else if (opd_at_least_once) {
       _internals.stderr("%crestart your terminal%c for `pkgx` hooks to take effect", 'color: #5f5fff', 'color: initial')
     }
